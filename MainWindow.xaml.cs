@@ -865,17 +865,34 @@ public partial class MainWindow : Window
             await matrixProcess.WaitForExitAsync();
 
             // Parse display matrix to determine rotation
-            // Display matrix format is typically a 9-element array
-            // For rotation, we typically look at elements [0] and [3]
-            var matrix = matrixOutput.Trim().Split('\n');
-            if (matrix.Length >= 9)
+            // Display matrix format is typically in the form "row:value value value"
+            var matrixLines = matrixOutput.Trim().Split('\n');
+            if (matrixLines.Length >= 3)
             {
-                // Convert display matrix to rotation angle
-                // This is a simplified version - might need adjustment based on actual matrix values
-                if (double.TryParse(matrix[0], out double m00) && double.TryParse(matrix[3], out double m10))
+                try
                 {
-                    var angle = Math.Atan2(m10, m00) * (180 / Math.PI);
-                    return (int)Math.Round(angle);
+                    // Parse the first two rows, splitting by both tab and space
+                    var row0Values = matrixLines[0].Split(new[] { '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                    var row1Values = matrixLines[1].Split(new[] { '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+
+                    if (row0Values.Length >= 2 && row1Values.Length >= 1)
+                    {
+                        var m01 = double.Parse(row0Values[1]); // Second value in first row
+                        var m10 = double.Parse(row1Values[0]); // First value in second row
+
+                        // Calculate rotation angle
+                        var angle = Math.Atan2(m10, -m01) * (180 / Math.PI);
+                        return (int)Math.Round(angle);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Log the parsing error
+                    using (var logFile = File.AppendText("ffmpeg-output.log"))
+                    {
+                        logFile.WriteLine($"Error parsing display matrix: {ex.Message}");
+                        logFile.WriteLine($"Matrix output was: {matrixOutput}");
+                    }
                 }
             }
 
