@@ -7,6 +7,7 @@ using System.Windows.Media;
 using System.Diagnostics;
 using System.Text.Json;
 using System.IO;
+using System.Linq;
 
 namespace VideoCutter;
 
@@ -24,17 +25,12 @@ public partial class MainWindow : Window
     private string? currentVideoPath = null; // Track the current video path
     private bool isFFmpegAvailable = false;
     private bool isNvencAvailable = false; // Track NVENC availability
-    private int initialRotation = 0; // Store the initial rotation from metadata
+    private Transform? _initialRotationTransform = Transform.Identity;
 
     private Transform InitialRotationTransform
     {
-        get
-        {
-            // Convert the rotation value to a WPF transform
-            // Note: WPF rotations are clockwise, while video metadata rotations are counterclockwise
-            // So we negate the rotation value
-            return new RotateTransform(-initialRotation);
-        }
+        get => _initialRotationTransform ?? Transform.Identity;
+        set => _initialRotationTransform = value;
     }
 
     public MainWindow()
@@ -199,8 +195,8 @@ public partial class MainWindow : Window
         {
             try
             {
-                // Get initial rotation before setting up video
-                initialRotation = await GetVideoRotation(openFileDialog.FileName);
+                // Get initial rotation transform before setting up video
+                InitialRotationTransform = await GetVideoRotation(openFileDialog.FileName);
 
                 // Apply initial rotation transform
                 mediaPlayer.LayoutTransform = InitialRotationTransform;
@@ -219,7 +215,7 @@ public partial class MainWindow : Window
                 using (var logFile = File.AppendText("ffmpeg-output.log"))
                 {
                     logFile.WriteLine($"Video loaded: {currentVideoPath}");
-                    logFile.WriteLine($"Initial rotation from metadata: {initialRotation} degrees");
+                    logFile.WriteLine($"Initial rotation transform applied: {InitialRotationTransform}");
                 }
             }
             catch (Exception ex)
@@ -822,7 +818,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task<int> GetVideoRotation(string videoPath)
+    private async Task<Transform> GetVideoRotation(string videoPath)
     {
         try
         {
@@ -845,7 +841,7 @@ public partial class MainWindow : Window
             // If rotation tag exists and is valid, use it
             if (int.TryParse(rotationOutput.Trim(), out int rotation))
             {
-                return rotation;
+                return new RotateTransform(-rotation); // Negate for WPF's clockwise rotation
             }
 
             // If no rotation tag, try to get the display matrix
@@ -864,25 +860,51 @@ public partial class MainWindow : Window
             var matrixOutput = await matrixProcess.StandardOutput.ReadToEndAsync();
             await matrixProcess.WaitForExitAsync();
 
-            // Parse display matrix to determine rotation
-            // Display matrix format is typically in the form "row:value value value"
+            // Parse display matrix
             var matrixLines = matrixOutput.Trim().Split('\n');
             if (matrixLines.Length >= 3)
             {
                 try
                 {
-                    // Parse the first two rows to get m01 and m10
-                    var row0Values = matrixLines[0].Split(':')[1].Trim().Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
-                    var row1Values = matrixLines[1].Split(':')[1].Trim().Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                    // Parse all three rows of the matrix
+                    var row0Values = matrixLines[0].Split(new[] { '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+                        .Select(double.Parse).ToArray();
+                    var row1Values = matrixLines[1].Split(new[] { '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+                        .Select(double.Parse).ToArray();
+                    var row2Values = matrixLines[2].Split(new[] { '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+                        .Select(double.Parse).ToArray();
 
-                    if (row0Values.Length >= 2 && row1Values.Length >= 1)
+                    if (row0Values.Length >= 3 && row1Values.Length >= 3 && row2Values.Length >= 3)
                     {
-                        var m01 = double.Parse(row0Values[1]); // Second value in first row
-                        var m10 = double.Parse(row1Values[0]); // First value in second row
+                        // FFmpeg's display matrix is in column-major order and needs to be normalized
+                        // We need to divide by 65536 (2^16) to get the actual values
+                        const double scale = 1.0 / 65536.0;
 
-                        // Calculate rotation angle
-                        var angle = Math.Atan2(m10, -m01) * (180 / Math.PI);
-                        return (int)Math.Round(angle);
+                        // Create WPF matrix (row-major order)
+                        var matrix = new Matrix(
+                            row0Values[0] * scale, // m11
+                            row0Values[1] * scale, // m12
+                            row1Values[0] * scale, // m21
+                            row1Values[1] * scale, // m22
+                            row2Values[0] * scale, // offsetX
+                            row2Values[1] * scale // offsetY
+                        );
+
+                        // Log the matrix values
+                        using (var logFile = File.AppendText("ffmpeg-output.log"))
+                        {
+                            logFile.WriteLine($"Display matrix parsed from FFmpeg:");
+                            logFile.WriteLine($"Original values:");
+                            logFile.WriteLine($"[{string.Join(", ", row0Values)}]");
+                            logFile.WriteLine($"[{string.Join(", ", row1Values)}]");
+                            logFile.WriteLine($"[{string.Join(", ", row2Values)}]");
+                            logFile.WriteLine($"Normalized WPF matrix:");
+                            logFile.WriteLine($"M11: {matrix.M11:F6}, M12: {matrix.M12:F6}");
+                            logFile.WriteLine($"M21: {matrix.M21:F6}, M22: {matrix.M22:F6}");
+                            logFile.WriteLine($"OffsetX: {matrix.OffsetX:F6}, OffsetY: {matrix.OffsetY:F6}");
+                        }
+
+                        return new MatrixTransform(matrix);
                     }
                 }
                 catch (Exception ex)
@@ -891,13 +913,17 @@ public partial class MainWindow : Window
                     using (var logFile = File.AppendText("ffmpeg-output.log"))
                     {
                         logFile.WriteLine($"Error parsing display matrix: {ex.Message}");
-                        logFile.WriteLine($"Matrix output was: {matrixOutput}");
+                        logFile.WriteLine($"Matrix output was:");
+                        foreach (var line in matrixLines)
+                        {
+                            logFile.WriteLine(line);
+                        }
                     }
                 }
             }
 
-            // If no rotation information found
-            return 0;
+            // If no rotation information found or parsing failed, return identity transform
+            return Transform.Identity;
         }
         catch (Exception ex)
         {
@@ -907,7 +933,7 @@ public partial class MainWindow : Window
                 logFile.WriteLine($"Error reading video rotation: {ex.Message}");
             }
 
-            return 0;
+            return Transform.Identity;
         }
     }
 }
