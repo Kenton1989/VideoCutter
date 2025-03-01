@@ -871,9 +871,9 @@ public partial class MainWindow : Window
             {
                 try
                 {
-                    // Parse the first two rows, splitting by both tab and space
-                    var row0Values = matrixLines[0].Split(new[] { '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries);
-                    var row1Values = matrixLines[1].Split(new[] { '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                    // Parse the first two rows to get m01 and m10
+                    var row0Values = matrixLines[0].Split(':')[1].Trim().Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                    var row1Values = matrixLines[1].Split(':')[1].Trim().Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
 
                     if (row0Values.Length >= 2 && row1Values.Length >= 1)
                     {
