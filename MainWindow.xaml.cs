@@ -23,7 +23,19 @@ public partial class MainWindow : Window
     private string? lastTransformation = null; // Track the last transformation applied
     private string? currentVideoPath = null; // Track the current video path
     private bool isFFmpegAvailable = false;
-    private bool isNvencAvailable = false;  // Track NVENC availability
+    private bool isNvencAvailable = false; // Track NVENC availability
+    private int initialRotation = 0; // Store the initial rotation from metadata
+
+    private Transform InitialRotationTransform
+    {
+        get
+        {
+            // Convert the rotation value to a WPF transform
+            // Note: WPF rotations are clockwise, while video metadata rotations are counterclockwise
+            // So we negate the rotation value
+            return new RotateTransform(-initialRotation);
+        }
+    }
 
     public MainWindow()
     {
@@ -36,7 +48,7 @@ public partial class MainWindow : Window
         makeOutButton.IsEnabled = false;
         goToOutButton.IsEnabled = false;
         exportButton.IsEnabled = false;
-        
+
         // Initialize timer for progress updates
         timer = new DispatcherTimer();
         timer.Interval = TimeSpan.FromMilliseconds(100); // Update every 100ms
@@ -135,6 +147,7 @@ public partial class MainWindow : Window
                 PlayPauseButton_Click(playPauseButton, new RoutedEventArgs());
                 e.Handled = true;
             }
+
             return;
         }
 
@@ -175,7 +188,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OpenButton_Click(object sender, RoutedEventArgs e)
+    private async void OpenButton_Click(object sender, RoutedEventArgs e)
     {
         var openFileDialog = new OpenFileDialog
         {
@@ -184,18 +197,36 @@ public partial class MainWindow : Window
 
         if (openFileDialog.ShowDialog() == true)
         {
-            // Reset video orientation
-            mediaPlayer.LayoutTransform = Transform.Identity;
-            lastTransformation = null;
+            try
+            {
+                // Get initial rotation before setting up video
+                initialRotation = await GetVideoRotation(openFileDialog.FileName);
 
-            currentVideoPath = openFileDialog.FileName;
-            mediaPlayer.Source = new Uri(currentVideoPath);
-            mediaPlayer.Play();
-            isPlaying = true;
-            UpdatePlayPauseButton();
-            timer.Start();
-            UpdateNavigationButtons();
-            exportButton.IsEnabled = isFFmpegAvailable;
+                // Apply initial rotation transform
+                mediaPlayer.LayoutTransform = InitialRotationTransform;
+                lastTransformation = null;
+
+                currentVideoPath = openFileDialog.FileName;
+                mediaPlayer.Source = new Uri(currentVideoPath);
+                mediaPlayer.Play();
+                isPlaying = true;
+                UpdatePlayPauseButton();
+                timer.Start();
+                UpdateNavigationButtons();
+                exportButton.IsEnabled = isFFmpegAvailable;
+
+                // Log the initial rotation
+                using (var logFile = File.AppendText("ffmpeg-output.log"))
+                {
+                    logFile.WriteLine($"Video loaded: {currentVideoPath}");
+                    logFile.WriteLine($"Initial rotation from metadata: {initialRotation} degrees");
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error opening video: {ex.Message}", "Error", MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
         }
     }
 
@@ -288,7 +319,7 @@ public partial class MainWindow : Window
             var clickPosition = e.GetPosition(progressOverlay);
             var ratio = clickPosition.X / progressOverlay.ActualWidth;
             var newPosition = TimeSpan.FromMilliseconds(mediaPlayer.NaturalDuration.TimeSpan.TotalMilliseconds * ratio);
-            
+
             // Set the new position
             mediaPlayer.Position = newPosition;
             UpdateProgress();
@@ -306,7 +337,7 @@ public partial class MainWindow : Window
         }
 
         var step = isShiftPressed ? frameStep : secondStep;
-        
+
         // Update button text based on mode
         nextFrameButton.Content = isShiftPressed ? "Frame ▶" : "+1 sec";
         lastFrameButton.Content = isShiftPressed ? "◀ Frame" : "-1 sec";
@@ -320,7 +351,8 @@ public partial class MainWindow : Window
     {
         if (mediaPlayer.NaturalDuration.HasTimeSpan)
         {
-            var progress = (mediaPlayer.Position.TotalMilliseconds / mediaPlayer.NaturalDuration.TimeSpan.TotalMilliseconds) * 100;
+            var progress = (mediaPlayer.Position.TotalMilliseconds /
+                            mediaPlayer.NaturalDuration.TimeSpan.TotalMilliseconds) * 100;
             videoProgress.Value = progress;
             currentTimeText.Text = FormatTimeSpan(mediaPlayer.Position);
         }
@@ -427,7 +459,8 @@ public partial class MainWindow : Window
 
         if (currentVideoPath == null || (!inPoint.HasValue && !outPoint.HasValue && lastTransformation == null))
         {
-            MessageBox.Show("Please set in/out points or apply a transformation before exporting.", "Export Video", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("Please set in/out points or apply a transformation before exporting.", "Export Video",
+                MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -435,7 +468,8 @@ public partial class MainWindow : Window
         {
             Filter = "MP4 files (*.mp4)|*.mp4|AVI files (*.avi)|*.avi|MKV files (*.mkv)|*.mkv",
             DefaultExt = System.IO.Path.GetExtension(currentVideoPath),
-            FileName = System.IO.Path.GetFileNameWithoutExtension(currentVideoPath) + "_exported" + System.IO.Path.GetExtension(currentVideoPath)
+            FileName = System.IO.Path.GetFileNameWithoutExtension(currentVideoPath) + "_exported" +
+                       System.IO.Path.GetExtension(currentVideoPath)
         };
 
         if (saveFileDialog.ShowDialog() == true)
@@ -481,10 +515,10 @@ public partial class MainWindow : Window
 
                 // Execute FFmpeg
                 using var process = new Process { StartInfo = startInfo };
-                
+
                 // Set up progress reporting
                 var progressRegex = new System.Text.RegularExpressions.Regex(@"time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})");
-                
+
                 process.ErrorDataReceived += (s, args) =>
                 {
                     if (args.Data == null) return;
@@ -536,18 +570,21 @@ public partial class MainWindow : Window
                 if (process.ExitCode == 0)
                 {
                     exportStatus.Text = "Export Complete";
-                    MessageBox.Show("Video exported successfully!", "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+                    MessageBox.Show("Video exported successfully!", "Export Complete", MessageBoxButton.OK,
+                        MessageBoxImage.Information);
                 }
                 else
                 {
                     exportStatus.Text = "Export Failed";
-                    MessageBox.Show("Error exporting video. Please check if FFmpeg is installed correctly.", "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show("Error exporting video. Please check if FFmpeg is installed correctly.",
+                        "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
             catch (Exception ex)
             {
                 exportStatus.Text = "Export Failed";
-                MessageBox.Show($"Error exporting video: {ex.Message}", "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"Error exporting video: {ex.Message}", "Export Error", MessageBoxButton.OK,
+                    MessageBoxImage.Error);
             }
             finally
             {
@@ -568,7 +605,8 @@ public partial class MainWindow : Window
         var startInfo = new ProcessStartInfo
         {
             FileName = "ffprobe",
-            Arguments = $"-v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 \"{videoPath}\"",
+            Arguments =
+                $"-v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 \"{videoPath}\"",
             UseShellExecute = false,
             RedirectStandardOutput = true,
             CreateNoWindow = true
@@ -622,6 +660,7 @@ public partial class MainWindow : Window
             {
                 args.Append($"-ss {inPoint.Value:hh\\:mm\\:ss\\.fff} ");
             }
+
             if (outPoint.HasValue)
             {
                 var duration = outPoint.Value - (inPoint ?? TimeSpan.Zero);
@@ -730,10 +769,13 @@ public partial class MainWindow : Window
             // Create a TransformGroup to hold our transformations
             var transformGroup = new TransformGroup();
 
+            // First add the initial rotation transform
+            transformGroup.Children.Add(InitialRotationTransform);
+
             switch (button.Name)
             {
                 case "normalTransformButton":
-                    mediaPlayer.LayoutTransform = Transform.Identity;
+                    mediaPlayer.LayoutTransform = InitialRotationTransform;
                     lastTransformation = null;
                     return;
 
@@ -779,14 +821,76 @@ public partial class MainWindow : Window
             mediaPlayer.LayoutTransform = transformGroup;
         }
     }
-}
 
-public static class MediaElementExtensions
-{
-    public static bool IsPlaying(this MediaElement mediaElement)
+    private async Task<int> GetVideoRotation(string videoPath)
     {
-        var fieldInfo = typeof(MediaElement).GetField("_isPlaying", 
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        return fieldInfo != null && (bool)fieldInfo.GetValue(mediaElement);
+        try
+        {
+            // First try to get the rotation tag
+            var rotationStartInfo = new ProcessStartInfo
+            {
+                FileName = "ffprobe",
+                Arguments =
+                    $"-v quiet -select_streams v:0 -show_entries stream_tags=rotate -of default=noprint_wrappers=1:nokey=1 \"{videoPath}\"",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                CreateNoWindow = true
+            };
+
+            using var rotationProcess = new Process { StartInfo = rotationStartInfo };
+            rotationProcess.Start();
+            var rotationOutput = await rotationProcess.StandardOutput.ReadToEndAsync();
+            await rotationProcess.WaitForExitAsync();
+
+            // If rotation tag exists and is valid, use it
+            if (int.TryParse(rotationOutput.Trim(), out int rotation))
+            {
+                return rotation;
+            }
+
+            // If no rotation tag, try to get the display matrix
+            var matrixStartInfo = new ProcessStartInfo
+            {
+                FileName = "ffprobe",
+                Arguments =
+                    $"-v quiet -select_streams v:0 -show_entries stream_side_data=displaymatrix -of default=noprint_wrappers=1:nokey=1 \"{videoPath}\"",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                CreateNoWindow = true
+            };
+
+            using var matrixProcess = new Process { StartInfo = matrixStartInfo };
+            matrixProcess.Start();
+            var matrixOutput = await matrixProcess.StandardOutput.ReadToEndAsync();
+            await matrixProcess.WaitForExitAsync();
+
+            // Parse display matrix to determine rotation
+            // Display matrix format is typically a 9-element array
+            // For rotation, we typically look at elements [0] and [3]
+            var matrix = matrixOutput.Trim().Split('\n');
+            if (matrix.Length >= 9)
+            {
+                // Convert display matrix to rotation angle
+                // This is a simplified version - might need adjustment based on actual matrix values
+                if (double.TryParse(matrix[0], out double m00) && double.TryParse(matrix[3], out double m10))
+                {
+                    var angle = Math.Atan2(m10, m00) * (180 / Math.PI);
+                    return (int)Math.Round(angle);
+                }
+            }
+
+            // If no rotation information found
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            // Log the error
+            using (var logFile = File.AppendText("ffmpeg-output.log"))
+            {
+                logFile.WriteLine($"Error reading video rotation: {ex.Message}");
+            }
+
+            return 0;
+        }
     }
-} 
+}
