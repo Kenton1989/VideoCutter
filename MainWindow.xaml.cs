@@ -867,11 +867,11 @@ public partial class MainWindow : Window
                 try
                 {
                     // Parse all three rows of the matrix
-                    var row0Values = matrixLines[0].Split(new[] { '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+                    var row0Values = matrixLines[0].Split(':')[1].Trim().Split(new[] { '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries)
                         .Select(double.Parse).ToArray();
-                    var row1Values = matrixLines[1].Split(new[] { '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+                    var row1Values = matrixLines[1].Split(':')[1].Trim().Split(new[] { '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries)
                         .Select(double.Parse).ToArray();
-                    var row2Values = matrixLines[2].Split(new[] { '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+                    var row2Values = matrixLines[2].Split(':')[1].Trim().Split(new[] { '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries)
                         .Select(double.Parse).ToArray();
 
                     if (row0Values.Length >= 3 && row1Values.Length >= 3 && row2Values.Length >= 3)
