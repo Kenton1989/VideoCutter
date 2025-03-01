@@ -615,6 +615,9 @@ public partial class MainWindow : Window
         // Input
         args.Append($"-i \"{inputPath}\" ");
 
+        // Remove all metadata including display matrix
+        args.Append("-map_metadata -1 ");
+
         // Trim if in/out points are set
         if (inPoint.HasValue || outPoint.HasValue)
         {
