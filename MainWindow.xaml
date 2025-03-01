@@ -1,0 +1,239 @@
+<Window x:Class="VideoCutter.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Video Player" Height="450" Width="800"
+        KeyDown="Window_KeyDown"
+        KeyUp="Window_KeyUp">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <MediaElement x:Name="mediaPlayer"
+                      Grid.Row="0"
+                      LoadedBehavior="Manual"
+                      UnloadedBehavior="Manual"
+                      MediaOpened="MediaPlayer_MediaOpened"
+                      MediaEnded="MediaPlayer_MediaEnded"
+                      ScrubbingEnabled="True" />
+
+        <Grid Grid.Row="1" Margin="10,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock x:Name="currentTimeText"
+                       Grid.Column="0"
+                       Text="00:00:00"
+                       VerticalAlignment="Center"
+                       Margin="0,0,5,0" />
+
+            <Grid Grid.Column="1">
+                <ProgressBar x:Name="videoProgress"
+                             Height="20"
+                             Minimum="0"
+                             Maximum="100"
+                             Value="0" />
+                <Canvas x:Name="progressOverlay"
+                        Background="Transparent"
+                        MouseDown="ProgressOverlay_MouseDown"
+                        Height="20" />
+            </Grid>
+
+            <TextBlock x:Name="totalTimeText"
+                       Grid.Column="2"
+                       Text="00:00:00"
+                       VerticalAlignment="Center"
+                       Margin="5,0,0,0" />
+        </Grid>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="10">
+            <Button x:Name="openButton"
+                    Content="Open Video"
+                    Click="OpenButton_Click"
+                    Width="100"
+                    Margin="5"
+                    Focusable="False" />
+            <Button x:Name="exportButton"
+                    Content="Export Video"
+                    Click="ExportButton_Click"
+                    Width="100"
+                    Margin="5"
+                    IsEnabled="False"
+                    Focusable="False" />
+            <TextBlock Text="|"
+                       FontSize="20"
+                       VerticalAlignment="Center"
+                       Margin="5,0" />
+            <Button x:Name="lastFrameButton"
+                    Content="-1 sec"
+                    Click="LastFrame_Click"
+                    Width="80"
+                    Margin="5"
+                    IsEnabled="False"
+                    Focusable="False" />
+            <Button x:Name="playPauseButton"
+                    Content="Play"
+                    Click="PlayPauseButton_Click"
+                    Width="100"
+                    Margin="5"
+                    Focusable="False" />
+            <Button x:Name="nextFrameButton"
+                    Content="+1 sec"
+                    Click="NextFrame_Click"
+                    Width="80"
+                    Margin="5"
+                    IsEnabled="False"
+                    Focusable="False" />
+            <TextBlock Text="|"
+                       FontSize="20"
+                       VerticalAlignment="Center"
+                       Margin="5,0" />
+            <TextBlock Text="Trans from:"
+                       FontSize="15"
+                       VerticalAlignment="Center"
+                       Margin="5,0" />
+            <Grid Width="100" Height="50">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="24" />
+                    <RowDefinition Height="24" />
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="24" />
+                    <ColumnDefinition Width="24" />
+                    <ColumnDefinition Width="24" />
+                    <ColumnDefinition Width="24" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Top Row -->
+                <Button Grid.Row="0" Grid.Column="0" Content="视" Width="22" Height="22" Margin="1" FontSize="12"
+                        Click="TransformButton_Click" Name="normalTransformButton" Focusable="False" />
+                <Button Grid.Row="0" Grid.Column="1" Content="视" Width="22" Height="22" Margin="1" FontSize="12"
+                        Click="TransformButton_Click" Name="rotate90Button" Focusable="False">
+                    <Button.LayoutTransform>
+                        <RotateTransform Angle="90" />
+                    </Button.LayoutTransform>
+                </Button>
+                <Button Grid.Row="0" Grid.Column="2" Content="视" Width="22" Height="22" Margin="1" FontSize="12"
+                        Click="TransformButton_Click" Name="rotate180Button" Focusable="False">
+                    <Button.LayoutTransform>
+                        <RotateTransform Angle="180" />
+                    </Button.LayoutTransform>
+                </Button>
+                <Button Grid.Row="0" Grid.Column="3" Content="视" Width="22" Height="22" Margin="1" FontSize="12"
+                        Click="TransformButton_Click" Name="rotate270Button" Focusable="False">
+                    <Button.LayoutTransform>
+                        <RotateTransform Angle="270" />
+                    </Button.LayoutTransform>
+                </Button>
+
+                <!-- Bottom Row -->
+                <Button Grid.Row="1" Grid.Column="0" Content="视" Width="22" Height="22" Margin="1" FontSize="12"
+                        Click="TransformButton_Click" Name="mirrorButton" Focusable="False">
+                    <Button.LayoutTransform>
+                        <ScaleTransform ScaleX="-1" ScaleY="1" />
+                    </Button.LayoutTransform>
+                </Button>
+                <Button Grid.Row="1" Grid.Column="1" Content="视" Width="22" Height="22" Margin="1" FontSize="12"
+                        Click="TransformButton_Click" Name="mirrorRotate270Button" Focusable="False">
+                    <Button.LayoutTransform>
+                        <TransformGroup>
+                            <ScaleTransform ScaleX="-1" ScaleY="1" />
+                            <RotateTransform Angle="90" />
+                        </TransformGroup>
+                    </Button.LayoutTransform>
+                </Button>
+                <Button Grid.Row="1" Grid.Column="2" Content="视" Width="22" Height="22" Margin="1" FontSize="12"
+                        Click="TransformButton_Click" Name="mirrorRotate180Button" Focusable="False">
+                    <Button.LayoutTransform>
+                        <TransformGroup>
+                            <ScaleTransform ScaleX="-1" ScaleY="1" />
+                            <RotateTransform Angle="180" />
+                        </TransformGroup>
+                    </Button.LayoutTransform>
+                </Button>
+                <Button Grid.Row="1" Grid.Column="3" Content="视" Width="22" Height="22" Margin="1" FontSize="12"
+                        Click="TransformButton_Click" Name="mirrorRotate90Button" Focusable="False">
+                    <Button.LayoutTransform>
+                        <TransformGroup>
+                            <ScaleTransform ScaleX="-1" ScaleY="1" />
+                            <RotateTransform Angle="270" />
+                        </TransformGroup>
+                    </Button.LayoutTransform>
+                </Button>
+            </Grid>
+        </StackPanel>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Center" Margin="10">
+            <TextBlock x:Name="inPointText"
+                       Text="In: 00:00:00"
+                       VerticalAlignment="Center"
+                       Margin="5,0,15,0"
+                       FontFamily="Consolas" />
+            <Button x:Name="makeInButton"
+                    Content="Make In"
+                    Width="80"
+                    Margin="5"
+                    IsEnabled="False"
+                    Focusable="False"
+                    Click="MakeInButton_Click" />
+            <Button x:Name="goToInButton"
+                    Content="Go to In"
+                    Width="80"
+                    Margin="5"
+                    IsEnabled="False"
+                    Focusable="False"
+                    Click="GoToInButton_Click" />
+            <TextBlock Text="|"
+                       FontSize="20"
+                       VerticalAlignment="Center"
+                       Margin="5,0" />
+            <Button x:Name="makeOutButton"
+                    Content="Make Out"
+                    Width="80"
+                    Margin="5"
+                    IsEnabled="False"
+                    Focusable="False"
+                    Click="MakeOutButton_Click" />
+            <Button x:Name="goToOutButton"
+                    Content="Go to Out"
+                    Width="80"
+                    Margin="5"
+                    IsEnabled="False"
+                    Focusable="False"
+                    Click="GoToOutButton_Click" />
+            <TextBlock x:Name="outPointText"
+                       Text="Out: --:--:--"
+                       VerticalAlignment="Center"
+                       Margin="15,0,5,0"
+                       FontFamily="Consolas" />
+        </StackPanel>
+
+        <!-- Export Progress -->
+        <Grid Grid.Row="4" Margin="10,0,10,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <ProgressBar x:Name="exportProgress"
+                        Height="20"
+                        Minimum="0"
+                        Maximum="100"
+                        Value="0"
+                        Visibility="Collapsed"/>
+            <TextBlock x:Name="exportStatus"
+                      Grid.Column="1"
+                      Text=""
+                      VerticalAlignment="Center"
+                      Margin="5,0,0,0"
+                      FontFamily="Consolas"
+                      Visibility="Collapsed"/>
+        </Grid>
+    </Grid>
+</Window>
